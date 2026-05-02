@@ -8,61 +8,116 @@ const companyInput = document.getElementById('company-search');
 const symbolInput = document.getElementById('symbol');
 const autocompleteList = document.getElementById('autocomplete-list');
 
-let debounceTimeout = null;
-companyInput.addEventListener('input', function() {
-    const query = this.value.trim();
-    if (debounceTimeout) clearTimeout(debounceTimeout);
-    if (!query) {
-        autocompleteList.style.display = 'none';
-        autocompleteList.innerHTML = '';
-        return;
+function syncStrategyControls() {
+    const strategyEl = document.getElementById('strategy');
+    const emaControls = document.getElementById('ema-controls');
+    const supertrendControls = document.getElementById('supertrend-controls');
+    if (!strategyEl || !emaControls) return;
+    const strategy = (strategyEl.value || 'ema').trim();
+    const isEma = strategy === 'ema';
+    emaControls.style.display = isEma ? '' : 'none';
+    if (supertrendControls) {
+        supertrendControls.style.display = isEma ? 'none' : '';
+        const stInputs = supertrendControls.querySelectorAll('input, select, button, textarea');
+        stInputs.forEach(el => {
+            el.disabled = isEma;
+        });
     }
-    debounceTimeout = setTimeout(() => {
-        fetch(`/api/search_symbol?q=${encodeURIComponent(query)}`)
-            .then(resp => resp.json())
-            .then(data => {
-                if (data.quotes && data.quotes.length > 0) {
-                    // Filter: Only show items with a readable company name (shortname or longname), exclude symbols like '0P...' or ending with '.BO'
-                    const filtered = data.quotes.filter(item => {
-                        const displayName = item.shortname || item.longname;
-                        // Exclude if no readable name, or if symbol looks like a code
-                        if (!displayName) return false;
-                        if (/^0P/i.test(item.symbol) || /\.BO$/i.test(item.symbol)) return false;
-                        return true;
-                    });
-                    autocompleteList.innerHTML = filtered.map(item => {
-                        const displayName = item.shortname || item.longname;
-                        return `<div class='autocomplete-item' style='padding:2px 8px;cursor:pointer;border-bottom:1px solid #eee;font-size:13px;line-height:1.3;width:270px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' data-symbol='${item.symbol}'>${displayName}</div>`;
-                    }).join('');
-                    autocompleteList.style.display = 'block';
-                } else {
-                    autocompleteList.innerHTML = `<div style='padding:6px;color:#888;'>No matches found</div>`;
-                    autocompleteList.style.display = 'block';
-                }
-            })
-            .catch(() => {
-                autocompleteList.innerHTML = `<div style='padding:6px;color:#888;'>Error fetching suggestions</div>`;
-                autocompleteList.style.display = 'block';
-            });
-    }, 300);
-});
+    const inputs = emaControls.querySelectorAll('input, select, button, textarea');
+    inputs.forEach(el => {
+        el.disabled = !isEma;
+    });
+}
 
-autocompleteList.addEventListener('mousedown', function(e) {
-    if (e.target && e.target.matches('.autocomplete-item')) {
-        const symbol = e.target.getAttribute('data-symbol');
-        const name = e.target.textContent;
-        symbolInput.value = symbol;
-        companyInput.value = name.replace(/\s*\(.+\)$/, '');
-        autocompleteList.style.display = 'none';
-        autocompleteList.innerHTML = '';
-    }
-});
+let debounceTimeout = null;
+if (companyInput) {
+    companyInput.addEventListener('input', function() {
+        const query = this.value.trim();
+        if (debounceTimeout) clearTimeout(debounceTimeout);
+        if (!query) {
+            if (autocompleteList) {
+                autocompleteList.style.display = 'none';
+                autocompleteList.innerHTML = '';
+            }
+            return;
+        }
+        debounceTimeout = setTimeout(() => {
+            fetch(`/api/search_symbol?q=${encodeURIComponent(query)}`)
+                .then(resp => resp.json())
+                .then(data => {
+                    if (!autocompleteList) return;
+                    if (data.quotes && data.quotes.length > 0) {
+                        const filtered = data.quotes.filter(item => {
+                            const displayName = item.shortname || item.longname;
+                            if (!displayName) return false;
+                            if (/^0P/i.test(item.symbol) || /\.BO$/i.test(item.symbol)) return false;
+                            return true;
+                        });
+                        autocompleteList.innerHTML = filtered.map(item => {
+                            const displayName = item.shortname || item.longname;
+                            return `<div class='autocomplete-item' style='padding:2px 8px;cursor:pointer;border-bottom:1px solid #eee;font-size:13px;line-height:1.3;width:270px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' data-symbol='${item.symbol}'>${displayName}</div>`;
+                        }).join('');
+                        autocompleteList.style.display = 'block';
+                    } else {
+                        autocompleteList.innerHTML = `<div style='padding:6px;color:#888;'>No matches found</div>`;
+                        autocompleteList.style.display = 'block';
+                    }
+                })
+                .catch(() => {
+                    if (!autocompleteList) return;
+                    autocompleteList.innerHTML = `<div style='padding:6px;color:#888;'>Error fetching suggestions</div>`;
+                    autocompleteList.style.display = 'block';
+                });
+        }, 300);
+    });
+}
+
+if (autocompleteList) {
+    autocompleteList.addEventListener('mousedown', function(e) {
+        if (e.target && e.target.matches('.autocomplete-item')) {
+            const symbol = e.target.getAttribute('data-symbol');
+            const name = e.target.textContent;
+            if (symbolInput) symbolInput.value = symbol;
+            if (companyInput) companyInput.value = name.replace(/\s*\(.+\)$/, '');
+            autocompleteList.style.display = 'none';
+            autocompleteList.innerHTML = '';
+        }
+    });
+}
 
 document.addEventListener('click', function(e) {
+    if (!autocompleteList || !companyInput) return;
     if (!autocompleteList.contains(e.target) && e.target !== companyInput) {
         autocompleteList.style.display = 'none';
     }
 });
+
+function setActivePage(pageName) {
+    const pages = document.querySelectorAll('.page');
+    pages.forEach(p => p.classList.remove('active'));
+    const target = document.getElementById(`page-${pageName}`);
+    if (target) target.classList.add('active');
+
+    const navBtns = document.querySelectorAll('.nav button[data-page]');
+    navBtns.forEach(b => b.classList.remove('active'));
+    const activeBtn = document.querySelector(`.nav button[data-page="${pageName}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    if (pageName === 'backtesting') {
+        if (!window.__backtestingLoadedOnce) {
+            window.__backtestingLoadedOnce = true;
+            loadChart();
+        }
+    }
+}
+
+function gotoHomeSection(sectionId) {
+    setActivePage('home');
+    const el = document.getElementById(sectionId);
+    if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
 
 function createChart() {
     if (chart) chart.remove(); // Remove old chart if exists
@@ -78,6 +133,7 @@ function createChart() {
 async function loadChart() {
     const symbol = document.getElementById('symbol').value.trim();
     const interval = document.getElementById('interval').value;
+    const strategy = (document.getElementById('strategy')?.value || 'ema').trim();
 
     // Defensive checks
     if (!symbol || !interval) {
@@ -87,19 +143,34 @@ async function loadChart() {
     // Do not clear chart div manually; let Lightweight Charts handle chart removal.
 
     createChart();
-    console.log('Requesting:', symbol, interval);
+    console.log('Requesting:', symbol, interval, strategy);
     try {
-        let biggerEMA = parseInt(document.getElementById('fast-ema').value, 10);
-        let smallerEMA = parseInt(document.getElementById('slow-ema').value, 10);
-        if (isNaN(biggerEMA) || isNaN(smallerEMA) || biggerEMA < 1 || smallerEMA < 1) {
-            alert('Please enter valid EMA lengths.');
-            return;
+        let url = '';
+        if (strategy === 'ema') {
+            let biggerEMA = parseInt(document.getElementById('fast-ema').value, 10);
+            let smallerEMA = parseInt(document.getElementById('slow-ema').value, 10);
+            if (isNaN(biggerEMA) || isNaN(smallerEMA) || biggerEMA < 1 || smallerEMA < 1) {
+                alert('Please enter valid EMA lengths.');
+                return;
+            }
+            if (biggerEMA <= smallerEMA) {
+                alert('Bigger Length EMA must be greater than Smaller Length EMA.');
+                return;
+            }
+            url = `/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&strategy=ema&ema_short=${smallerEMA}&ema_long=${biggerEMA}`;
+        } else {
+            const stPeriod = parseInt(document.getElementById('st-period')?.value || '7', 10);
+            const stMultiplier = parseFloat(document.getElementById('st-multiplier')?.value || '3');
+            if (isNaN(stPeriod) || stPeriod < 1) {
+                alert('Please enter a valid Supertrend period.');
+                return;
+            }
+            if (isNaN(stMultiplier) || stMultiplier <= 0) {
+                alert('Please enter a valid Supertrend multiplier.');
+                return;
+            }
+            url = `/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&strategy=supertrend&st_period=${encodeURIComponent(stPeriod)}&st_multiplier=${encodeURIComponent(stMultiplier)}`;
         }
-        if (biggerEMA <= smallerEMA) {
-            alert('Bigger Length EMA must be greater than Smaller Length EMA.');
-            return;
-        }
-        const url = `/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&ema_short=${smallerEMA}&ema_long=${biggerEMA}`;
         const resp = await fetch(url);
         if (!resp.ok) {
             alert('Server error: ' + resp.status);
@@ -117,34 +188,57 @@ async function loadChart() {
             // Always render candlesticks first
             candleSeries.setData(chartData);
 
-            // Dual EMA overlay with crossover signals
-            let biggerEMA = parseInt(document.getElementById('fast-ema').value, 10);
-            let smallerEMA = parseInt(document.getElementById('slow-ema').value, 10);
-            if (isNaN(biggerEMA) || isNaN(smallerEMA) || biggerEMA < 1 || smallerEMA < 1) {
-                alert('Please enter valid EMA lengths.');
-                return;
-            }
-            if (biggerEMA <= smallerEMA) {
-                alert('Bigger Length EMA must be greater than Smaller Length EMA.');
-                return;
-            }
-            let fastLength = biggerEMA;
-            let slowLength = smallerEMA;
-            if (isNaN(fastLength) || fastLength < 1 || isNaN(slowLength) || slowLength < 1) {
-                alert('Please enter valid EMA lengths.');
-                return;
-            }
-            if (Array.isArray(chartData) && chartData.length >= Math.max(fastLength, slowLength)) {
-                const fastEMA = calculateEMA(chartData, fastLength);
-                const slowEMA = calculateEMA(chartData, slowLength);
-                if (!Array.isArray(fastEMA) || !Array.isArray(slowEMA) || fastEMA.length === 0 || slowEMA.length === 0) {
-                    console.error('EMA calculation returned empty or invalid array');
+            if (strategy === 'ema') {
+                // Dual EMA overlay with crossover signals
+                let biggerEMA = parseInt(document.getElementById('fast-ema').value, 10);
+                let smallerEMA = parseInt(document.getElementById('slow-ema').value, 10);
+                if (isNaN(biggerEMA) || isNaN(smallerEMA) || biggerEMA < 1 || smallerEMA < 1) {
+                    alert('Please enter valid EMA lengths.');
                     return;
                 }
-                const fastSeries = chart.addLineSeries({ color: '#ff0000', lineWidth: 2 }); // Red
-                const slowSeries = chart.addLineSeries({ color: '#28a745', lineWidth: 2 }); // Green
-                fastSeries.setData(fastEMA);
-                slowSeries.setData(slowEMA);
+                if (biggerEMA <= smallerEMA) {
+                    alert('Bigger Length EMA must be greater than Smaller Length EMA.');
+                    return;
+                }
+                let fastLength = biggerEMA;
+                let slowLength = smallerEMA;
+                if (isNaN(fastLength) || fastLength < 1 || isNaN(slowLength) || slowLength < 1) {
+                    alert('Please enter valid EMA lengths.');
+                    return;
+                }
+                if (Array.isArray(chartData) && chartData.length >= Math.max(fastLength, slowLength)) {
+                    const fastEMA = calculateEMA(chartData, fastLength);
+                    const slowEMA = calculateEMA(chartData, slowLength);
+                    if (!Array.isArray(fastEMA) || !Array.isArray(slowEMA) || fastEMA.length === 0 || slowEMA.length === 0) {
+                        console.error('EMA calculation returned empty or invalid array');
+                        return;
+                    }
+                    const fastSeries = chart.addLineSeries({ color: '#ff0000', lineWidth: 2 }); // Red
+                    const slowSeries = chart.addLineSeries({ color: '#28a745', lineWidth: 2 }); // Green
+                    fastSeries.setData(fastEMA);
+                    slowSeries.setData(slowEMA);
+                } else {
+                    alert('Not enough data to calculate EMAs.');
+                }
+            } else {
+                // Supertrend overlay (7,3) using backend computed series
+                if (data.supertrend && Array.isArray(data.supertrend) && data.supertrend.length > 0) {
+                    const upSeries = chart.addLineSeries({ color: '#28a745', lineWidth: 2 });
+                    const downSeries = chart.addLineSeries({ color: '#ff0000', lineWidth: 2 });
+                    const upData = [];
+                    const downData = [];
+                    data.supertrend.forEach(p => {
+                        if (p.value === null || p.value === undefined) return;
+                        if (p.trend === 'up') {
+                            upData.push({ time: p.time, value: p.value });
+                        } else {
+                            downData.push({ time: p.time, value: p.value });
+                        }
+                    });
+                    upSeries.setData(upData);
+                    downSeries.setData(downData);
+                }
+            }
 
                 // --- Use backend-provided buy/sell signals for markers ---
                 if (data.signals && Array.isArray(data.signals) && data.signals.length > 0) {
@@ -284,10 +378,6 @@ tableHtml += `</tbody></table>`;
 
                 document.getElementById('trade-log').innerHTML = tableHtml + yearlyHtml;
             
-            } else {
-                alert('Not enough data to calculate EMAs.');
-            }
-
             // Session break logic: add vertical lines at the start of each new day
             addSessionBreaks(chart, chartData);
 
@@ -302,6 +392,22 @@ tableHtml += `</tbody></table>`;
 }
 
 // Helper function to add session breaks (vertical lines)
+
+function addSessionBreaks(chart, chartData) {
+    try {
+        if (!chart || !Array.isArray(chartData) || chartData.length === 0) return;
+        // Lightweight Charts does not have native vertical line primitives.
+        // Keep this as a safe no-op placeholder to avoid breaking chart rendering.
+        return;
+    } catch (e) {
+        console.error('addSessionBreaks failed:', e);
+    }
+}
+
+// Backward-compatible alias (some cached versions call this typo)
+function addSessiononBreaks(chart, chartData) {
+    return addSessionBreaks(chart, chartData);
+}
 
 // Helper function to calculate RSI (Relative Strength Index)
 function calculateRSI(data, period) {
@@ -401,7 +507,54 @@ function calculateEMA(data, length) {
 
 
 // Load initial chart
-document.addEventListener('DOMContentLoaded', loadChart);
+document.addEventListener('DOMContentLoaded', () => {
+    syncStrategyControls();
+    const strategyEl = document.getElementById('strategy');
+    if (strategyEl) {
+        strategyEl.addEventListener('change', () => {
+            syncStrategyControls();
+            loadChart();
+        });
+    }
+
+    const navBtns = document.querySelectorAll('.nav button[data-page]');
+    navBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const page = btn.getAttribute('data-page');
+            if (page) setActivePage(page);
+        });
+    });
+
+    const gotoBtns = document.querySelectorAll('[data-goto]');
+    gotoBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const page = btn.getAttribute('data-goto');
+            if (!page) return;
+            if (page === 'home-auth') {
+                gotoHomeSection('home-auth');
+                return;
+            }
+            setActivePage(page);
+        });
+    });
+
+    const loginBtn = document.getElementById('login-btn');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', () => {
+            const msg = document.getElementById('login-msg');
+            if (msg) msg.textContent = 'Login UI is ready. Backend auth is not enabled in this version.';
+        });
+    }
+    const registerBtn = document.getElementById('register-btn');
+    if (registerBtn) {
+        registerBtn.addEventListener('click', () => {
+            const msg = document.getElementById('register-msg');
+            if (msg) msg.textContent = 'Register UI is ready. Backend auth is not enabled in this version.';
+        });
+    }
+
+    setActivePage('home');
+});
 window.loadChart = loadChart;
 
 // --- Custom Date Range Stats ---
